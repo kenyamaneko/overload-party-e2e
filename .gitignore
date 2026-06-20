@@ -1,0 +1,13 @@
+node_modules/
+
+# Playwright
+test-results/
+playwright-report/
+
+# Env / secrets
+.env
+.env.local
+secrets/
+
+# OS
+.DS_Store

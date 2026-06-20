@@ -1,0 +1,31 @@
+{
+  "name": "overload-party-e2e",
+  "version": "0.1.0",
+  "private": true,
+  "description": "End-to-end / cross-service integration tests for the Overload Party microservices, exercised exclusively through gateway.",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:api": "playwright test --project=api",
+    "test:ui": "playwright test --project=ui",
+    "compose:up": "docker compose -f docker/docker-compose.yml up -d --wait",
+    "compose:down": "docker compose -f docker/docker-compose.yml down -v"
+  },
+  "dependencies": {
+    "@kenyamaneko/overload-party-api-gateway": "file:../overload-party-gateway/packages/api-gateway-npm",
+    "@kenyamaneko/overload-party-api-card": "file:../overload-party-card/packages/api-card-npm",
+    "@kenyamaneko/overload-party-api-shop": "file:../overload-party-shop/packages/api-shop-npm",
+    "@kenyamaneko/overload-party-api-scenario": "file:../overload-party-scenario/packages/api-scenario-npm",
+    "@kenyamaneko/overload-party-game-design-constants": "file:../overload-party-common/packages/game-design-constants-npm",
+    "@kenyamaneko/overload-party-game-state": "file:../overload-party-battle/packages/game-state-npm",
+    "@playwright/test": "^1.48.0",
+    "dotenv": "^16.4.5",
+    "firebase-admin": "^12.5.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.0",
+    "@types/ws": "^8.5.13",
+    "typescript": "^5.6.0"
+  }
+}
