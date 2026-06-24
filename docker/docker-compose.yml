@@ -4,10 +4,9 @@
 # Postgres, Pub/Sub emulator, Firestore emulator, Redis.
 #
 # All services are built from sibling repos checked out next to overload-party-e2e.
-# Building Go services (account / card / shop / scenario / gateway) requires a single
-# GitHub App installation token as a docker secret. matchmaking has no private
-# cross-repo dependencies and battle resolves dependencies via Cloudsmith, so neither
-# needs the token.
+# Building Go services (account / card / shop / scenario / gateway / matchmaking) requires a
+# single GitHub App installation token as a docker secret. battle resolves its dependencies
+# via Cloudsmith instead, so its build omits the secret.
 #
 #   secrets/GO_MODULES_TOKEN  (overload-party-cross-repo-deps App の installation token)
 #
@@ -49,13 +48,27 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_MULTIPLE_DATABASES: account,card,shop,scenario,gateway
+      # Production migrates every service schema into one database (ops db-migrate applies a
+      # schema union), so services share a database and cross-schema reads work — e.g. scenario
+      # reads account.players/player_factions. Each service scopes itself with a per-connection
+      # search_path (see DATABASE_CONN below). Mirror that with a single shared database here.
+      POSTGRES_DB: overload_party
     volumes:
-      - ./postgres/init-multiple-dbs.sh:/docker-entrypoint-initdb.d/00_init.sh:ro
-      - ../../overload-party-account/db/schema.sql:/docker-entrypoint-initdb.d/01_account.sql:ro
-      - ../../overload-party-card/db/schema.sql:/docker-entrypoint-initdb.d/02_card.sql:ro
-      - ../../overload-party-shop/db/schema.sql:/docker-entrypoint-initdb.d/03_shop.sql:ro
-      - ../../overload-party-scenario/db/schema.sql:/docker-entrypoint-initdb.d/04_scenario.sql:ro
+      # Each schema (CREATE SCHEMA <svc> + its tables) and the generated seeds run against the
+      # single database in filename order: all schemas first, then card seeds (products before
+      # initiatives for the product_id FK), then shop products. card eager-loads its
+      # card/product/initiative caches at startup and exits if any is empty.
+      - ../../overload-party-account/db/schema.sql:/docker-entrypoint-initdb.d/01_account_schema.sql:ro
+      - ../../overload-party-card/db/schema.sql:/docker-entrypoint-initdb.d/02_card_schema.sql:ro
+      - ../../overload-party-shop/db/schema.sql:/docker-entrypoint-initdb.d/03_shop_schema.sql:ro
+      - ../../overload-party-scenario/db/schema.sql:/docker-entrypoint-initdb.d/04_scenario_schema.sql:ro
+      - ../../overload-party-gateway/db/schema.sql:/docker-entrypoint-initdb.d/05_gateway_schema.sql:ro
+      - ../../overload-party-battle/db/schema.sql:/docker-entrypoint-initdb.d/06_battle_schema.sql:ro
+      - ../../overload-party-card/db/seed/products_seed.sql:/docker-entrypoint-initdb.d/07_card_products_seed.sql:ro
+      - ../../overload-party-card/db/seed/initiatives_seed.sql:/docker-entrypoint-initdb.d/08_card_initiatives_seed.sql:ro
+      - ../../overload-party-card/db/seed/cards_seed.sql:/docker-entrypoint-initdb.d/09_card_cards_seed.sql:ro
+      - ../../overload-party-card/db/seed/card_packs_seed.sql:/docker-entrypoint-initdb.d/10_card_packs_seed.sql:ro
+      - ../../overload-party-shop/db/seed/products_seed.sql:/docker-entrypoint-initdb.d/11_shop_products_seed.sql:ro
     ports:
       - "5432:5432"
     healthcheck:
@@ -115,6 +128,25 @@ services:
     entrypoint: ["/bin/bash", "/init-topics.sh"]
     restart: "no"
 
+  # Seeds the Firestore emulator's game_config collection from common's SSoT yaml using
+  # ops' seed tool. account validates required game_config keys at startup, so it waits for
+  # this to finish. Real environments run the same tool against Cloud Firestore.
+  firestore-init:
+    image: python:3.12-slim
+    depends_on:
+      firestore-emulator:
+        condition: service_healthy
+    environment:
+      FIRESTORE_EMULATOR_HOST: firestore-emulator:8080
+    volumes:
+      - ../../overload-party-ops/firestore-seed/seed_game_config.py:/seed/seed_game_config.py:ro
+      - ../../overload-party-common/data/game_config_defaults.yaml:/seed/game_config_defaults.yaml:ro
+    entrypoint:
+      - /bin/sh
+      - -c
+      - pip install --quiet google-cloud-firestore pyyaml && python3 /seed/seed_game_config.py --project overload-party-local --source /seed/game_config_defaults.yaml
+    restart: "no"
+
   account:
     build:
       context: ../../overload-party-account
@@ -124,12 +156,14 @@ services:
         condition: service_healthy
       firestore-emulator:
         condition: service_healthy
+      firestore-init:
+        condition: service_completed_successfully
       pubsub-init:
         condition: service_completed_successfully
     environment:
       PORT: "9005"
       LOG_MODE: local
-      DATABASE_CONN: postgres://postgres:postgres@postgres:5432/account?sslmode=disable
+      DATABASE_CONN: host=postgres port=5432 user=postgres password=postgres dbname=overload_party sslmode=disable search_path=account,public
       DATABASE_IAM_AUTH_ENABLED: "false"
       GOOGLE_CLOUD_PROJECT_ID: overload-party-local
       FIRESTORE_EMULATOR_HOST: firestore-emulator:8080
@@ -149,9 +183,9 @@ services:
       pubsub-init:
         condition: service_completed_successfully
     environment:
-      ENV: local
+      ENV: dev
       PORT: "9003"
-      DATABASE_CONN: postgres://postgres:postgres@postgres:5432/card?sslmode=disable
+      DATABASE_CONN: host=postgres port=5432 user=postgres password=postgres dbname=overload_party sslmode=disable search_path=card,public
       DATABASE_IAM_AUTH_ENABLED: "false"
       PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
       PUBSUB_PROJECT_ID: overload-party-local
@@ -172,10 +206,10 @@ services:
       pubsub-init:
         condition: service_completed_successfully
     environment:
-      ENV: local
+      IAP_MODE: local
       PORT: "9006"
       LOG_MODE: local
-      DATABASE_CONN: postgres://postgres:postgres@postgres:5432/shop?sslmode=disable
+      DATABASE_CONN: host=postgres port=5432 user=postgres password=postgres dbname=overload_party sslmode=disable search_path=shop,public
       DATABASE_IAM_AUTH_ENABLED: "false"
       GOOGLE_CLOUD_PROJECT: overload-party-local
       FIRESTORE_EMULATOR_HOST: firestore-emulator:8080
@@ -210,11 +244,12 @@ services:
     environment:
       ENV: local
       PORT: "9007"
-      DATABASE_CONN: postgres://postgres:postgres@postgres:5432/scenario?sslmode=disable
+      # scenario reads account.players / account.player_factions for episode unlock context,
+      # so its search_path includes the account schema in the shared database.
+      DATABASE_CONN: host=postgres port=5432 user=postgres password=postgres dbname=overload_party sslmode=disable search_path=scenario,account,public
       DATABASE_IAM_AUTH_ENABLED: "false"
       GOOGLE_CLOUD_PROJECT_ID: overload-party-local
       FIRESTORE_EMULATOR_HOST: firestore-emulator:8080
-      FIRESTORE_PROJECT_ID: overload-party-local
       PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
       PUBSUB_PROJECT_ID: overload-party-local
       # ローカルスタックは Cloud Storage に到達できないため、スクリプトの読み出し元を
@@ -235,6 +270,7 @@ services:
   matchmaking:
     build:
       context: ../../overload-party-matchmaking
+      secrets: *go-build-secrets
     depends_on:
       redis:
         condition: service_healthy
@@ -258,9 +294,17 @@ services:
   battle:
     build:
       context: ../../overload-party-battle
+    depends_on:
+      postgres:
+        condition: service_healthy
+      card:
+        condition: service_started
     environment:
       ASPNETCORE_ENVIRONMENT: Local
       ASPNETCORE_URLS: http://+:9002
+      # battle uses Npgsql (.NET connection-string format, not libpq) and owns the battle
+      # schema in the shared database; unqualified queries resolve via Search Path=battle.
+      DATABASE_CONN: Host=postgres;Port=5432;Database=overload_party;Username=postgres;Password=postgres;Search Path=battle
     ports:
       - "9002:9002"
 
@@ -296,8 +340,9 @@ services:
     environment:
       ENV: local
       PORT: "9001"
-      DATABASE_CONN: postgres://postgres:postgres@postgres:5432/gateway?sslmode=disable
+      DATABASE_CONN: host=postgres port=5432 user=postgres password=postgres dbname=overload_party sslmode=disable search_path=gateway,public
       DATABASE_IAM_AUTH_ENABLED: "false"
+      GOOGLE_CLOUD_PROJECT_ID: overload-party-local
       ACCOUNT_SERVICE_URL: http://account:9005
       CARD_SERVICE_URL: http://card:9003
       MATCHMAKING_SERVICE_URL: http://matchmaking:9004
