@@ -23,11 +23,27 @@ create_sub() {
   else
     body="{\"topic\":\"projects/${PROJECT}/topics/${topic}\",\"ackDeadlineSeconds\":30}"
   fi
-  curl -fsS -X PUT "http://${HOST}/v1/projects/${PROJECT}/subscriptions/${sub}" \
+
+  local status
+  status=$(curl -sS -o /dev/null -w '%{http_code}' -X PUT "http://${HOST}/v1/projects/${PROJECT}/subscriptions/${sub}" \
     -H "Content-Type: application/json" \
-    -d "$body" >/dev/null \
-    && echo "created subscription: ${sub} -> ${topic}" \
-    || echo "subscription ${sub} already exists or failed (continuing)"
+    -d "$body")
+
+  if [ "$status" = "200" ]; then
+    echo "created subscription: ${sub} -> ${topic}"
+    return 0
+  fi
+  if [ "$status" = "409" ]; then
+    echo "subscription ${sub} already exists (continuing)"
+    return 0
+  fi
+
+  # push_endpoint 付き購読は pull 購読と違い配信経路の生命線なので、失敗を黙殺せず止める。
+  if [ -n "$push_endpoint" ]; then
+    echo "failed to create push subscription ${sub} -> ${topic}: http ${status}" >&2
+    exit 1
+  fi
+  echo "subscription ${sub} creation returned http ${status} (continuing)"
 }
 
 # Topics published by each service.
