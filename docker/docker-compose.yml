@@ -215,6 +215,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
       pubsub-init:
         condition: service_completed_successfully
       firestore-emulator:
@@ -247,6 +249,7 @@ services:
       FIRESTORE_EMULATOR_HOST: firestore-emulator:8080
       FIRESTORE_PROJECT_ID: overload-party-local
       ALLOWED_ORIGINS: http://localhost:5173,http://localhost:9001
+      UPSTASH_REDIS_URL: redis://redis:6379
     ports:
       - "9001:9001"
     healthcheck:
