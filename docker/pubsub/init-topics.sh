@@ -55,8 +55,8 @@ create_topic "onboarding-faction-set"
 
 # Subscriptions per consumer (gateway, account, card).
 # gateway は matchmaking-events を pull 購読するプロセスを持たず HTTP push 受け口
-# (POST /internal/v1/pubsub/match_made) で受信するため、この購読のみ push で作成する。
-create_sub "matchmaking-events" "matchmaking-events-gateway" "http://gateway:9001/internal/v1/pubsub/match_made"
+# (POST /internal/v1/pubsub/match-made) で受信するため、この購読のみ push で作成する。
+create_sub "matchmaking-events" "matchmaking-events-gateway" "http://gateway:9001/internal/v1/pubsub/match-made"
 create_sub "faction-purchased"  "faction-purchased-account"
 create_sub "faction-purchased"  "faction-purchased-card"
 create_sub "premium-updated"    "premium-updated-account"
