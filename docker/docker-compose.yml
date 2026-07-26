@@ -115,6 +115,7 @@ services:
       ENV: local
       PORT: "9005"
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/account?sslmode=disable
+      DATABASE_IAM_AUTH_ENABLED: "false"
       PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
       PUBSUB_PROJECT_ID: overload-party-local
     ports:
@@ -133,6 +134,7 @@ services:
       ENV: local
       PORT: "9003"
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/card?sslmode=disable
+      DATABASE_IAM_AUTH_ENABLED: "false"
       PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
       PUBSUB_PROJECT_ID: overload-party-local
       ACCOUNT_SERVICE_URL: http://account:9005
@@ -152,6 +154,7 @@ services:
       ENV: local
       PORT: "9006"
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/shop?sslmode=disable
+      DATABASE_IAM_AUTH_ENABLED: "false"
       PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
       PUBSUB_PROJECT_ID: overload-party-local
     ports:
@@ -174,6 +177,7 @@ services:
       ENV: local
       PORT: "9007"
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/scenario?sslmode=disable
+      DATABASE_IAM_AUTH_ENABLED: "false"
       FIRESTORE_EMULATOR_HOST: firestore-emulator:8080
       FIRESTORE_PROJECT_ID: overload-party-local
       PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
@@ -237,6 +241,7 @@ services:
       ENV: local
       PORT: "9001"
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/gateway?sslmode=disable
+      DATABASE_IAM_AUTH_ENABLED: "false"
       ACCOUNT_SERVICE_URL: http://account:9005
       CARD_SERVICE_URL: http://card:9003
       MATCHMAKING_SERVICE_URL: http://matchmaking:9004
