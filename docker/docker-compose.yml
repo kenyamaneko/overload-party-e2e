@@ -243,7 +243,6 @@ services:
       BATTLE_SERVER_URL: http://battle:9002
       PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
       PUBSUB_PROJECT_ID: overload-party-local
-      MATCHMAKING_SUBSCRIPTION: matchmaking-events-gateway
       FIRESTORE_EMULATOR_HOST: firestore-emulator:8080
       FIRESTORE_PROJECT_ID: overload-party-local
       ALLOWED_ORIGINS: http://localhost:5173,http://localhost:9001
