@@ -316,11 +316,14 @@ services:
     depends_on:
       gateway:
         condition: service_started
-    entrypoint:
-      - /bin/bash
-      - -c
-      - for _ in $$(seq 60); do curl -fsS http://gateway:9001/api/v1/health && exit 0; sleep 2; done; exit 1
-    restart: "no"
+    # 一度終了するコンテナは `docker compose up --wait` を失敗させるため、常駐させて
+    # 到達可否を healthcheck で表す。
+    entrypoint: ["sleep", "infinity"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://gateway:9001/api/v1/health || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
 
   # React client (Vite SPA) served via `vite preview` so UI E2E can drive the real
   # screens. Built with VITE_* pointing at the host-published gateway; the SPA runs in
@@ -340,6 +343,6 @@ services:
         VITE_WS_HOST: localhost:9001
     depends_on:
       gateway-ready:
-        condition: service_completed_successfully
+        condition: service_healthy
     ports:
       - "5173:5173"
