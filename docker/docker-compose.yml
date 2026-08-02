@@ -18,13 +18,26 @@
 #
 #   pnpm compose:up
 #
-# Services bind to host ports matching gateway's defaults (BATTLE_SERVER_URL=...:9002 etc.)
-# so tests against local Pub/Sub-driven flows work without additional networking.
+# Each service is published on the host port its *_SERVICE_URL points at, so tests can
+# reach gateway and Pub/Sub-driven flows work without additional networking.
 
 name: overload-party-e2e
 
 x-go-build-secrets: &go-build-secrets
   - source: GO_MODULES_TOKEN
+
+# ローカルスタックには鍵管理基盤が無いため、gateway が発行する内部認証 JWT (RS256) の
+# 鍵対はこの compose 専用に生成したものを直接埋め込む。
+x-internal-auth-public-key: &internal-auth-public-key |
+  -----BEGIN PUBLIC KEY-----
+  MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuLZaind+mEMdRYBq7ivA
+  Zo7nWFmIUYi3po4dGO6FKHo4o4ZDRBnqonBnSEeD0HOuq/95juP4D5VdrFcSjgBh
+  D8vzul2Z8+m+caZlljKs7mrOhzHj69zm78HHzHghG+iml2az0SD5LUBdNwMpRzFj
+  fxoY1Y32tCbfByhyQl2LbLHqIk8OfMCj4GlAu5e6Sfr4Dc5QOgsGd5mnGXBVCPYB
+  1guv3a8Fpwn57YrwWJDkVh3fIO35Lpubt5plD+ymEQ2kSvej7I7zWWs9e96u1Ch3
+  0Br61Jyp/TXNe473Xzkew7SkiiVviVz2hLJuszltyeSqYEEQ+Dilla27fz+rszbA
+  twIDAQAB
+  -----END PUBLIC KEY-----
 
 secrets:
   GO_MODULES_TOKEN:
@@ -114,10 +127,11 @@ services:
     environment:
       ENV: local
       PORT: "9005"
-      DATABASE_URL: postgres://postgres:postgres@postgres:5432/account?sslmode=disable
+      DATABASE_CONN: postgres://postgres:postgres@postgres:5432/account?sslmode=disable
       DATABASE_IAM_AUTH_ENABLED: "false"
       PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
       PUBSUB_PROJECT_ID: overload-party-local
+      INTERNAL_AUTH_PUBLIC_KEY: *internal-auth-public-key
     ports:
       - "9005:9005"
 
@@ -133,11 +147,12 @@ services:
     environment:
       ENV: local
       PORT: "9003"
-      DATABASE_URL: postgres://postgres:postgres@postgres:5432/card?sslmode=disable
+      DATABASE_CONN: postgres://postgres:postgres@postgres:5432/card?sslmode=disable
       DATABASE_IAM_AUTH_ENABLED: "false"
       PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
       PUBSUB_PROJECT_ID: overload-party-local
       ACCOUNT_SERVICE_URL: http://account:9005
+      INTERNAL_AUTH_PUBLIC_KEY: *internal-auth-public-key
     ports:
       - "9003:9003"
 
@@ -153,10 +168,11 @@ services:
     environment:
       ENV: local
       PORT: "9006"
-      DATABASE_URL: postgres://postgres:postgres@postgres:5432/shop?sslmode=disable
+      DATABASE_CONN: postgres://postgres:postgres@postgres:5432/shop?sslmode=disable
       DATABASE_IAM_AUTH_ENABLED: "false"
       PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
       PUBSUB_PROJECT_ID: overload-party-local
+      INTERNAL_AUTH_PUBLIC_KEY: *internal-auth-public-key
     ports:
       - "9006:9006"
 
@@ -176,13 +192,14 @@ services:
     environment:
       ENV: local
       PORT: "9007"
-      DATABASE_URL: postgres://postgres:postgres@postgres:5432/scenario?sslmode=disable
+      DATABASE_CONN: postgres://postgres:postgres@postgres:5432/scenario?sslmode=disable
       DATABASE_IAM_AUTH_ENABLED: "false"
       FIRESTORE_EMULATOR_HOST: firestore-emulator:8080
       FIRESTORE_PROJECT_ID: overload-party-local
       PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
       PUBSUB_PROJECT_ID: overload-party-local
       ACCOUNT_SERVICE_URL: http://account:9005
+      INTERNAL_AUTH_PUBLIC_KEY: *internal-auth-public-key
     ports:
       - "9007:9007"
 
@@ -237,10 +254,14 @@ services:
         condition: service_started
       battle:
         condition: service_started
+    # イメージ既定の cmd/main は Firebase ID トークン検証と Google 署名付き Pub/Sub push
+    # 認証を要求し、このスタックが供給できない資格情報に依存するため、テストが使う
+    # dev-token を受け付けるローカルモードのバイナリを起動する。
+    entrypoint: ["/app/local"]
     environment:
       ENV: local
       PORT: "9001"
-      DATABASE_URL: postgres://postgres:postgres@postgres:5432/gateway?sslmode=disable
+      DATABASE_CONN: postgres://postgres:postgres@postgres:5432/gateway?sslmode=disable
       DATABASE_IAM_AUTH_ENABLED: "false"
       ACCOUNT_SERVICE_URL: http://account:9005
       CARD_SERVICE_URL: http://card:9003
@@ -248,17 +269,58 @@ services:
       SHOP_SERVICE_URL: http://shop:9006
       SCENARIO_SERVICE_URL: http://scenario:9007
       BATTLE_SERVER_URL: http://battle:9002
+      # Phase 1 の e2e シナリオが /news と /support を通らないため、転送先の宛先だけ与えて
+      # サービス自体はこのスタックに置かない。
+      NEWS_SERVICE_URL: http://news:9008
+      SUPPORT_SERVICE_URL: http://support:9009
       FIRESTORE_EMULATOR_HOST: firestore-emulator:8080
       FIRESTORE_PROJECT_ID: overload-party-local
       ALLOWED_ORIGINS: http://localhost:5173,http://localhost:9001
       UPSTASH_REDIS_URL: redis://redis:6379
+      INTERNAL_AUTH_PRIVATE_KEY: |
+        -----BEGIN PRIVATE KEY-----
+        MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQC4tlqKd36YQx1F
+        gGruK8BmjudYWYhRiLemjh0Y7oUoejijhkNEGeqicGdIR4PQc66r/3mO4/gPlV2s
+        VxKOAGEPy/O6XZnz6b5xpmWWMqzuas6HMePr3ObvwcfMeCEb6KaXZrPRIPktQF03
+        AylHMWN/GhjVjfa0Jt8HKHJCXYtsseoiTw58wKPgaUC7l7pJ+vgNzlA6CwZ3macZ
+        cFUI9gHWC6/drwWnCfntivBYkORWHd8g7fkum5u3mmUP7KYRDaRK96PsjvNZaz17
+        3q7UKHfQGvrUnKn9Nc17jvdfOR7DtKSKJW+JXPaEsm6zOW3J5KpgQRD4OKWVrbt/
+        P6uzNsC3AgMBAAECggEACRxRde/z6g2xZWqym4HD8SsORSDRZPgh2tC6pa6qGbeB
+        kKtAKR1AIff6WCnS2hbCoFAvDjm3VAlxf90hmKhzISTVpjUUsV+vmYp0C0b/mZji
+        C/ANhmY0a9H6iV7Jf0dn5CLYLrH6KF2620pIIG9SsYO3gt0INJWQPZmknRphFKDS
+        OluAbyHdtbaI5qAfrcGmrgvHa2UwfaXUvl0SEzb/eIxoEcfPFzipVcd2w1j9atJB
+        rh0KUZewKbiRCCWmhcoqgms9Ti0xSh5m1YR72wTmM9beUSfrmFaesZzxnuQaOZnm
+        B6jg3cJNIwUl6srD33X9gezytC9UJ+g5SImnKutAEQKBgQD6NitB1Li/WAMH9BSY
+        Bzsw+iNX88gEeVrCVNQ+Xw6Oy5FAKhF5I+a2zHs8snE+Ay3qrkVIrtJ5IQIhx8i3
+        /Pl5PXPvUfbwLoxLthKGx/h2YexZk0hJkm8Lkccx8E+p97D3KUOYa14rCmb/18fg
+        SsSjfTLfHHxlF6kKMDr1JlI45wKBgQC8/EcO2nRnPS8Dbamtk036f7GqIlZ/uqqR
+        mN5rdas01D0rTSVXDYMfxeIpMLIuKNTARKscO/5fvAlBSPUcpnUAM4I4/HCxxO5P
+        5zFg6OzepQUADOxBCP4Ik68LLZjx1K0vacJlxvxO9OgWSBXpB2RgEWNwSyk83sPv
+        YJraEF0vsQKBgH5k8sEUhicSfKV95RFPRdVd5pC9cyLfcruMQpMnTaFQsBUrqxv4
+        yMk6zl5A/feHf6B3XER1G5lY1UzfMUPQJO3b3z7bttRpjzGHziAL0DVtDgnJ3tBb
+        ioDbqTZO4M9JcjnIvH64bh9r59AB3tQssNytmA8gwq4Gn7un1YCVVR+tAoGAdZA2
+        oA3TtdmA4pAYqsrlCnzfR+g+iQzVSOehDZZQn/eb6dD+9o2IUX6nN1p8rWxnFQhi
+        rZjAoEt4Mm2xVVZTmIFydALOFDhey8QVmqSrncFoP+TKH5b5eNpuXPTLnTzhU4pm
+        DSxhDrkZm6rSPnmDvqNyiYuoJp6posMk8ZyWa7ECgYALvBhXeaBQz2YzJTgkq6o3
+        5vNEMz4xG6jtegtc/Cz3OHWgU3lhzdB4R4fCbTScTwo8KGP8NQvpBUY4mdrRAHe5
+        3BiFPvdKNNkAFgOTHxZSNBGspJweFnJuHGs1baHlx90zfEzs8jy1JuC9BssuzcL9
+        k8Zw0WCQy/ymqpwIVKghjA==
+        -----END PRIVATE KEY-----
     ports:
       - "9001:9001"
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q -O- http://localhost:9001/api/v1/health || exit 1"]
-      interval: 3s
-      timeout: 3s
-      retries: 30
+
+  # gateway のイメージは distroless でシェルも HTTP クライアントも持たず、コンテナ内で
+  # healthcheck を実行できないため、到達確認を別のコンテナから行う。
+  gateway-ready:
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators
+    depends_on:
+      gateway:
+        condition: service_started
+    entrypoint:
+      - /bin/bash
+      - -c
+      - for _ in $$(seq 60); do curl -fsS http://gateway:9001/api/v1/health && exit 0; sleep 2; done; exit 1
+    restart: "no"
 
   # React client (Vite SPA) served via `vite preview` so UI E2E can drive the real
   # screens. Built with VITE_* pointing at the host-published gateway; the SPA runs in
@@ -277,7 +339,7 @@ services:
         VITE_API_BASE_URL: http://localhost:9001
         VITE_WS_HOST: localhost:9001
     depends_on:
-      gateway:
-        condition: service_healthy
+      gateway-ready:
+        condition: service_completed_successfully
     ports:
       - "5173:5173"
