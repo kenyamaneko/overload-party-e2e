@@ -8,7 +8,7 @@
     "test": "playwright test",
     "test:api": "playwright test --project=api",
     "test:ui": "playwright test --project=ui",
-    "compose:up": "docker compose -f docker/docker-compose.yml up -d --wait",
+    "compose:up": "docker compose -f docker/docker-compose.yml up -d --wait postgres redis pubsub-emulator firestore-emulator account card shop scenario matchmaking battle gateway gateway-ready client",
     "compose:down": "docker compose -f docker/docker-compose.yml down -v"
   },
   "dependencies": {

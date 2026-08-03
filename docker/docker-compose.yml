@@ -122,13 +122,17 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      firestore-emulator:
+        condition: service_healthy
       pubsub-init:
         condition: service_completed_successfully
     environment:
-      ENV: local
       PORT: "9005"
+      LOG_MODE: local
       DATABASE_CONN: postgres://postgres:postgres@postgres:5432/account?sslmode=disable
       DATABASE_IAM_AUTH_ENABLED: "false"
+      GOOGLE_CLOUD_PROJECT_ID: overload-party-local
+      FIRESTORE_EMULATOR_HOST: firestore-emulator:8080
       PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
       PUBSUB_PROJECT_ID: overload-party-local
       INTERNAL_AUTH_PUBLIC_KEY: *internal-auth-public-key
@@ -163,15 +167,29 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      firestore-emulator:
+        condition: service_healthy
       pubsub-init:
         condition: service_completed_successfully
     environment:
       ENV: local
       PORT: "9006"
+      LOG_MODE: local
       DATABASE_CONN: postgres://postgres:postgres@postgres:5432/shop?sslmode=disable
       DATABASE_IAM_AUTH_ENABLED: "false"
+      GOOGLE_CLOUD_PROJECT: overload-party-local
+      FIRESTORE_EMULATOR_HOST: firestore-emulator:8080
       PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
       PUBSUB_PROJECT_ID: overload-party-local
+      CARD_PACK_PURCHASED_TOPIC: card-pack-purchased
+      FACTION_ACQUIRED_TOPIC: faction-acquired
+      PREMIUM_UPDATED_TOPIC: premium-updated
+      # ローカルからは Apple / Google のレシート検証 API を叩けないため、検証を stub にする。
+      IAP_VERIFIER: stub
+      OUTBOX_POLL_INTERVAL: 1s
+      OUTBOX_BATCH_SIZE: "100"
+      OUTBOX_FAILURE_THRESHOLD: "5"
+      OUTBOX_VISIBILITY_TIMEOUT: 30s
       INTERNAL_AUTH_PUBLIC_KEY: *internal-auth-public-key
     ports:
       - "9006:9006"
@@ -194,11 +212,22 @@ services:
       PORT: "9007"
       DATABASE_CONN: postgres://postgres:postgres@postgres:5432/scenario?sslmode=disable
       DATABASE_IAM_AUTH_ENABLED: "false"
+      GOOGLE_CLOUD_PROJECT_ID: overload-party-local
       FIRESTORE_EMULATOR_HOST: firestore-emulator:8080
       FIRESTORE_PROJECT_ID: overload-party-local
       PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
       PUBSUB_PROJECT_ID: overload-party-local
-      ACCOUNT_SERVICE_URL: http://account:9005
+      # ローカルスタックは Cloud Storage に到達できないため、スクリプトの読み出し元を
+      # コンテナのファイルシステムに向ける。
+      STORY_BUCKET: local:/app/scripts
+      ONBOARDING_NAME_SET_TOPIC: onboarding-name-set
+      ONBOARDING_FACTION_SET_TOPIC: onboarding-faction-set
+      PLAYER_ONBOARDED_TOPIC: player-onboarded
+      ACCOUNT_BASE_URL: http://account:9005
+      OUTBOX_POLL_INTERVAL: 1s
+      OUTBOX_BATCH_SIZE: "100"
+      OUTBOX_FAILURE_THRESHOLD: "5"
+      OUTBOX_VISIBILITY_TIMEOUT: 30s
       INTERNAL_AUTH_PUBLIC_KEY: *internal-auth-public-key
     ports:
       - "9007:9007"
@@ -212,11 +241,17 @@ services:
       pubsub-init:
         condition: service_completed_successfully
     environment:
-      ENV: local
+      APP_ENV: local
       PORT: "9004"
-      REDIS_URL: redis://redis:6379
+      UPSTASH_REDIS_URL: redis://redis:6379
+      GOOGLE_CLOUD_PROJECT_ID: overload-party-local
       PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
       PUBSUB_PROJECT_ID: overload-party-local
+      MATCH_MADE_TOPIC: matchmaking-events
+      MATCHMAKING_CIRCUIT_THRESHOLD: "5"
+      MATCHMAKING_CIRCUIT_COOLDOWN_SEC: "30"
+      MATCHMAKING_DRAIN_TIMEOUT_SEC: "10"
+      INTERNAL_AUTH_PUBLIC_KEY: *internal-auth-public-key
     ports:
       - "9004:9004"
 

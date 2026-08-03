@@ -94,6 +94,9 @@ pnpm test:api
 pnpm compose:down
 ```
 
+`compose:up` は待機するサービスを名前で並べる。一度きりで終了する `pubsub-init` を
+待機対象に含めると `--wait` が失敗するため、サービスを追加したらこの一覧にも足す。
+
 ### dev / stg (manual; both environments are normally shut down for cost)
 One-time setup per developer:
 ```sh
