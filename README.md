@@ -1,6 +1,6 @@
 # overload-party-e2e
 
-カードゲーム Overload Party のサービス横断 E2E / 結合テストを担うリポジトリ。gateway 経由でのみ各サービスにアクセスする。
+カードゲーム Overload Party のサービス横断 E2E / 結合テストを担うリポジトリ。
 
 ## 技術スタック
 
