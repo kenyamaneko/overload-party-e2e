@@ -17,6 +17,4 @@
 | ドキュメント | 内容 |
 |---|---|
 | [セットアップ](docs/SETUP.md) | ローカル実行手順・UI テストの認証方式・dev/stg 実行手順 |
-| [ADR-028](https://github.com/kenyamaneko/overload-party-common/tree/main/docs/adr/028-e2e-test-strategy.md)（commonリポジトリ） | E2E テスト戦略の設計判断 |
-| [ADR-033](https://github.com/kenyamaneko/overload-party-common/tree/main/docs/adr/033-cross-repo-auth-github-app-migration.md)（commonリポジトリ） | Cross-repo 認証の設計判断 |
 | [システム構成図](https://github.com/kenyamaneko/overload-party-common#システム構成図)（commonリポジトリ） | Overload Party 全体の構成図 |
