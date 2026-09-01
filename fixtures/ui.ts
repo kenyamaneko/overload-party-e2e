@@ -5,8 +5,8 @@ import { makeUid } from '../helpers/ids.js';
 import { pollUntil } from '../helpers/poll.js';
 
 /**
- * A player created via the gateway REST API, ready to be loaded in the browser.
- * `identity.idToken` is the dev-token the client must carry in localStorage.
+ * gateway REST API 経由で作成した、ブラウザへ読み込む準備ができたプレイヤー。
+ * `identity.idToken` は client が localStorage に保持すべき dev-token。
  */
 export interface SeededPlayer {
   uid: string;
@@ -17,20 +17,21 @@ export interface SeededPlayer {
 
 export interface SeedOptions {
   displayName?: string;
-  /** When set, runs onboarding (name + faction) so the player resumes straight to home. */
+  /** 設定すると onboarding (name + faction) を実行し、プレイヤーがそのままホームへ復帰するようにする。 */
   faction?: string;
 }
 
 export interface UiFixtures {
   /**
-   * Creates a player through the gateway (reusing the same REST client the API tests
-   * use) without touching the browser. The returned identity bridges into `loginAs`.
+   * ブラウザに触れず、gateway 経由でプレイヤーを作成する (API テストと同じ REST client
+   * を再利用する)。返される identity は `loginAs` への橋渡しに使う。
    */
   seedPlayer: (scope: string, opts?: SeedOptions) => Promise<SeededPlayer>;
   /**
-   * Injects the client's dev-auth blob into localStorage *before* any page script runs,
-   * so `restoreDevAuth()` in main.tsx boots the app already authenticated as this player.
-   * Mirrors the shape devLogin() writes: { uid, displayName, token }.
+   * ページのスクリプトが実行される*前*に client の dev-auth blob を localStorage へ
+   * 注入し、main.tsx の `restoreDevAuth()` がこのプレイヤーとして認証済みの状態で
+   * アプリを起動できるようにする。devLogin() が書き込む形 { uid, displayName, token }
+   * と同じ形にする。
    */
   loginAs: (auth: { uid: string; idToken: string; displayName?: string }) => Promise<void>;
 }
@@ -47,8 +48,9 @@ export const test = base.extend<UiFixtures>({
       if (opts.faction) {
         await client.setOnboardingName(displayName);
         await client.selectOnboardingFaction(opts.faction);
-        // faction is applied via the onboarding-faction-set event, so Complete observes it only
-        // after the event propagates; retry past the transient "faction not selected" 409.
+        // faction は onboarding-faction-set イベント経由で反映されるため、Complete が
+        // それを見るのはイベント伝播後になる。一時的な「faction 未選択」409 を越えて
+        // リトライする。
         await pollUntil(() => client.completeOnboarding(), {
           timeoutMs: env.pollTimeoutMs,
           intervalMs: env.pollIntervalMs,

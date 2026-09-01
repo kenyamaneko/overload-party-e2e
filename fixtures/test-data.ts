@@ -63,8 +63,9 @@ export const test = base.extend<E2EFixtures>({
       const player = await newPlayer(scope);
       await player.client.setOnboardingName(`E2E ${scope}`);
       await player.client.selectOnboardingFaction(faction);
-      // faction is applied via the onboarding-faction-set event, so Complete observes it only
-      // after the event propagates; retry past the transient "faction not selected" 409.
+      // faction は onboarding-faction-set イベント経由で反映されるため、Complete が
+      // それを見るのはイベント伝播後になる。一時的な「faction 未選択」409 を越えて
+      // リトライする。
       await pollUntil(() => player.client.completeOnboarding(), {
         timeoutMs: env.pollTimeoutMs,
         intervalMs: env.pollIntervalMs,
@@ -86,8 +87,8 @@ export const test = base.extend<E2EFixtures>({
 
       const deckCards = pickDeckCards(cards);
 
-      // A deck declares a faction plus one product and its routine/special initiatives.
-      // The card products endpoint carries each product's initiatives, so resolve them here.
+      // デッキは faction に加え、1つの product とその routine/special の施策を宣言する。
+      // card の products エンドポイントが各 product の施策を保持しているため、ここで解決する。
       const products = await player.client.listCardProducts();
       const product = products.find((p) => p.faction === faction);
       if (!product) {
@@ -122,11 +123,11 @@ interface DeckCardEntry {
 }
 
 /**
- * Assembles a legal deck from the owned pool: exactly INITIAL_VALUES.deckSize cards, capping
- * each card_id at its restriction copy limit (summed across art_no variants, matching the
- * card service's per-card_id validation).
- * @param owned the player's owned cards with definitions and counts
- * @returns the selected deck card entries (card_id, art_no, count)
+ * 所持カードプールから正規のデッキを組み立てる。ちょうど INITIAL_VALUES.deckSize 枚とし、
+ * card_id ごとに restriction のコピー上限で頭打ちにする (art_no のバリエーションを
+ * 合算した上で、card サービスの card_id 単位の検証と揃える)。
+ * @param owned 所持カード (定義と枚数を含む)
+ * @returns 選択されたデッキカードのエントリ (card_id, art_no, count)
  */
 function pickDeckCards(owned: PlayerCardWithDef[]): DeckCardEntry[] {
   const out: DeckCardEntry[] = [];

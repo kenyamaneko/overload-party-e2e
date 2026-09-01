@@ -12,9 +12,9 @@ if (!fs.existsSync(envFile)) {
 }
 dotenv.config({ path: envFile });
 
-// UI tests drive the real React client (served on :5173 by the `client`
-// docker-compose service). API tests talk to gateway directly, so they keep the
-// gateway baseURL. The client must point at the same gateway via its VITE_* build args.
+// UI テストは実際の React client (docker-compose の `client` サービスが :5173 で
+// 配信) を操作する。API テストは gateway に直接話しかけるため gateway の baseURL
+// のままにする。client は VITE_* のビルド引数で同じ gateway を指す必要がある。
 const clientBaseUrl = process.env.CLIENT_BASE_URL ?? 'http://localhost:5173';
 
 export default defineConfig({

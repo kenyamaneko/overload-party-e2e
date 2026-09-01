@@ -1,24 +1,24 @@
-# Local docker-compose for the e2e test target.
+# e2e テスト対象のローカル docker-compose。
 #
-# Spins up the 7 phase-1 services (gateway + 6 backends + battle) plus dependencies:
-# Postgres, Pub/Sub emulator, Firestore emulator, Redis.
+# phase-1 の7サービス (gateway + backend 6つ + battle) と、その依存先
+# (Postgres / Pub/Sub エミュレータ / Firestore エミュレータ / Redis) を起動する。
 #
-# All services are built from sibling repos checked out next to overload-party-e2e.
-# Building Go services (account / card / shop / scenario / gateway / matchmaking) requires a
-# single GitHub App installation token as a docker secret. battle resolves its dependencies
-# via Cloudsmith instead, so its build omits the secret.
+# 各サービスは overload-party-e2e と同じ階層に checkout された兄弟リポジトリから
+# ビルドする。Go サービス (account / card / shop / scenario / gateway / matchmaking)
+# のビルドには GitHub App の installation token を docker secret として1つ渡す
+# 必要がある。battle は依存解決を Cloudsmith 経由で行うため、この secret は不要。
 #
 #   secrets/GO_MODULES_TOKEN  (overload-party-cross-repo-deps App の installation token)
 #
-# Token は Cross-Repo Deps App から都度生成する (1 時間 expire)。
+# Token は Cross-Repo Deps App から都度生成する (1時間で失効)。
 # helper script で発行:
 #   GITHUB_APP_ID=... GITHUB_APP_PRIVATE_KEY=path/to/key.pem \
 #     ./docker/scripts/generate-go-modules-token.sh
 #
 #   pnpm compose:up
 #
-# Each service is published on the host port its *_SERVICE_URL points at, so tests can
-# reach gateway and Pub/Sub-driven flows work without additional networking.
+# 各サービスはそれぞれの *_SERVICE_URL が指すホストポートで公開されるため、
+# テストは追加のネットワーク設定無しで gateway や Pub/Sub 駆動のフローに到達できる。
 
 name: overload-party-e2e
 
@@ -48,16 +48,18 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      # Production migrates every service schema into one database (ops db-migrate applies a
-      # schema union), so services share a database and cross-schema reads work — e.g. scenario
-      # reads account.players/player_factions. Each service scopes itself with a per-connection
-      # search_path (see DATABASE_CONN below). Mirror that with a single shared database here.
+      # 本番は各サービスのスキーマを1つのデータベースへ集約する (ops db-migrate が
+      # スキーマの union を適用する) ため、サービス間でデータベースを共有しスキーマを
+      # 跨いだ読み取りが成立する (例: scenario が account.players/player_factions を読む)。
+      # 各サービスは接続ごとの search_path (下記 DATABASE_CONN 参照) で自スキーマに
+      # 絞り込む。ここでも同じ単一データベース構成を再現する。
       POSTGRES_DB: overload_party
     volumes:
-      # Each schema (CREATE SCHEMA <svc> + its tables) and the generated seeds run against the
-      # single database in filename order: all schemas first, then card seeds (products before
-      # initiatives for the product_id FK), then shop products. card eager-loads its
-      # card/product/initiative caches at startup and exits if any is empty.
+      # 各スキーマ (CREATE SCHEMA <svc> とそのテーブル群) と投入用シードは、この単一
+      # データベースに対してファイル名順で適用される。全スキーマ作成 → card のシード
+      # (product_id の FK 制約があるため products を initiatives より先に) → shop の
+      # products の順。card は起動時にカード/プロダクト/施策キャッシュを即座に読み込み、
+      # いずれかが空なら終了する。
       - ../../overload-party-account/db/schema.sql:/docker-entrypoint-initdb.d/01_account_schema.sql:ro
       - ../../overload-party-card/db/schema.sql:/docker-entrypoint-initdb.d/02_card_schema.sql:ro
       - ../../overload-party-shop/db/schema.sql:/docker-entrypoint-initdb.d/03_shop_schema.sql:ro
@@ -128,9 +130,9 @@ services:
     entrypoint: ["/bin/bash", "/init-topics.sh"]
     restart: "no"
 
-  # Seeds the Firestore emulator's game_config collection from common's SSoT yaml using
-  # ops' seed tool. account validates required game_config keys at startup, so it waits for
-  # this to finish. Real environments run the same tool against Cloud Firestore.
+  # ops のシードツールを使い、common の SSoT yaml から Firestore エミュレータの
+  # game_config コレクションを投入する。account は起動時に必須の game_config キーを
+  # 検証するため、この完了を待つ。実環境では同じツールを実際の Cloud Firestore に対して実行する。
   firestore-init:
     image: python:3.12-slim
     depends_on:
@@ -244,8 +246,8 @@ services:
     environment:
       ENV: local
       PORT: "9007"
-      # scenario reads account.players / account.player_factions for episode unlock context,
-      # so its search_path includes the account schema in the shared database.
+      # scenario はエピソード解放判定のため account.players / account.player_factions
+      # を読むので、共有データベース内で search_path に account スキーマも含める。
       DATABASE_CONN: host=postgres port=5432 user=postgres password=postgres dbname=overload_party sslmode=disable search_path=scenario,account,public
       DATABASE_IAM_AUTH_ENABLED: "false"
       GOOGLE_CLOUD_PROJECT_ID: overload-party-local
@@ -302,8 +304,9 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Local
       ASPNETCORE_URLS: http://+:9002
-      # battle uses Npgsql (.NET connection-string format, not libpq) and owns the battle
-      # schema in the shared database; unqualified queries resolve via Search Path=battle.
+      # battle は Npgsql を使う (.NET の接続文字列形式であり libpq ではない) ため、
+      # 共有データベース内の battle スキーマを所有し、無修飾のクエリは
+      # Search Path=battle で解決される。
       DATABASE_CONN: Host=postgres;Port=5432;Database=overload_party;Username=postgres;Password=postgres;Search Path=battle
     ports:
       - "9002:9002"
@@ -405,16 +408,16 @@ services:
       timeout: 3s
       retries: 30
 
-  # React client (Vite SPA) served via `vite preview` so UI E2E can drive the real
-  # screens. Built with VITE_* pointing at the host-published gateway; the SPA runs in
-  # the host browser, so localhost:9001 resolves correctly. Port 5173 matches
-  # gateway's ALLOWED_ORIGINS above.
+  # React client (Vite SPA)。UI E2E が実際の画面を操作できるよう `vite preview` で
+  # 配信する。VITE_* はホスト側に公開された gateway を指してビルドする。SPA は
+  # ホストのブラウザ上で動くため localhost:9001 は正しく解決される。ポート 5173 は
+  # 上記 gateway の ALLOWED_ORIGINS と対応する。
   #
-  # If @kenyamaneko/* needs auth at build time, add to build below:
+  # ビルド時に @kenyamaneko/* の認証が必要になった場合は、以下の build に
   #     secrets:
   #       - CLOUDSMITH_TOKEN
-  # and declare CLOUDSMITH_TOKEN in the top-level `secrets:` block
-  # (file: ../secrets/CLOUDSMITH_TOKEN).
+  # を追加し、トップレベルの `secrets:` ブロックにも CLOUDSMITH_TOKEN を
+  # 宣言する (file: ../secrets/CLOUDSMITH_TOKEN)。
   client:
     build:
       context: ../../overload-party-client

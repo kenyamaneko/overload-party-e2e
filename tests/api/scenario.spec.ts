@@ -1,8 +1,8 @@
 import { test, expect } from '../../fixtures/test-data.js';
 
-// Skipped: episode masters have no canonical seed — no in-repo artifact populates
-// scenario.scenario_episodes (only unit-test fixtures do), so listScenarios returns empty.
-// Tracked in kenyamaneko/overload-party-scenario#28.
+// skip 中: エピソードマスタに正規のシードが無い (scenario.scenario_episodes を
+// 投入するリポ内artifactが無く、単体テスト用fixtureにしか存在しない) ため、
+// listScenariosは空を返す。kenyamaneko/overload-party-scenario#28 で追跡している。
 test.skip('scenario: list → complete', async ({ bootBattleReadyPlayer }) => {
   const { player } = await bootBattleReadyPlayer('scenario', 'SHE');
 
