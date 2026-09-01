@@ -421,6 +421,9 @@ services:
       args:
         VITE_API_BASE_URL: http://localhost:9001
         VITE_WS_HOST: localhost:9001
+        # client は vite preview (DEV=false) で動くため VITE_ASSET_BASE_URL が必須で、
+        # 自己配信の空マニフェスト (public/manifest.json) を指せば解決する。
+        VITE_ASSET_BASE_URL: http://localhost:5173
     depends_on:
       gateway-ready:
         condition: service_healthy
