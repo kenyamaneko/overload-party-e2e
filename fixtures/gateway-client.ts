@@ -59,6 +59,9 @@ export class GatewayClient {
       initial_faction_id: initialFactionId,
     } satisfies OnboardingFactionRequest);
   }
+  /**
+   * Completes onboarding after the name and faction have been set.
+   */
   completeOnboarding(): Promise<OnboardingCompleteResponse> {
     return this.request<OnboardingCompleteResponse>(
       'POST',

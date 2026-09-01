@@ -2,6 +2,7 @@ import { test as base } from './test-data.js';
 import { mintIdentity, type TestIdentity } from './auth.js';
 import { GatewayClient } from './gateway-client.js';
 import { makeUid } from '../helpers/ids.js';
+import { pollUntil } from '../helpers/poll.js';
 
 /**
  * A player created via the gateway REST API, ready to be loaded in the browser.
@@ -45,7 +46,14 @@ export const test = base.extend<UiFixtures>({
       const displayName = opts.displayName ?? `E2E ${scope}`;
       if (opts.faction) {
         await client.setOnboardingName(displayName);
-        await client.completeOnboarding(opts.faction);
+        await client.selectOnboardingFaction(opts.faction);
+        // faction is applied via the onboarding-faction-set event, so Complete observes it only
+        // after the event propagates; retry past the transient "faction not selected" 409.
+        await pollUntil(() => client.completeOnboarding(), {
+          timeoutMs: env.pollTimeoutMs,
+          intervalMs: env.pollIntervalMs,
+          description: `complete onboarding (faction-set propagation, faction=${opts.faction})`,
+        });
       }
       return { uid, identity, client, displayName };
     };
