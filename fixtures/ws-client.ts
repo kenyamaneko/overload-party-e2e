@@ -42,7 +42,7 @@ export class WsClient {
         const env = JSON.parse(text) as WsEnvelope;
         this.deliver(env);
       } catch {
-        // Drop non-JSON frames silently.
+        // JSON でないフレームは黙って捨てる。
       }
     });
 

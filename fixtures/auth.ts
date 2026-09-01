@@ -21,10 +21,10 @@ function getAdminApp(env: E2EEnv): App {
   const projectId = env.firebaseProjectId;
   if (!projectId) throw new Error('FIREBASE_PROJECT_ID is required for AUTH_MODE=firebase');
 
-  // ADC + serviceAccountId: Admin SDK signs JWTs by calling
-  // iamcredentials.signBlob on this SA. The caller (developer's user account
-  // via `gcloud auth application-default login`) needs
-  // roles/iam.serviceAccountTokenCreator on the SA. No SA keys are issued.
+  // ADC + serviceAccountId: Admin SDK はこの SA に対して iamcredentials.signBlob
+  // を呼ぶことで JWT に署名する。呼び出し元 (`gcloud auth application-default login`
+  // で認証した開発者のユーザーアカウント) はこの SA に対する
+  // roles/iam.serviceAccountTokenCreator が必要。SA キーは発行しない。
   cachedAdminApp = initializeApp(
     {
       projectId,

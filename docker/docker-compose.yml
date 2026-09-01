@@ -1,25 +1,24 @@
-# Local docker-compose for the e2e test target.
+# e2e テスト対象のローカル docker-compose。
 #
-# Spins up the 7 phase-1 services (gateway + 6 backends + battle) plus dependencies:
-# Postgres, Pub/Sub emulator, Firestore emulator, Redis.
+# phase-1 の7サービス (gateway + backend 6つ + battle) と、その依存先
+# (Postgres / Pub/Sub エミュレータ / Firestore エミュレータ / Redis) を起動する。
 #
-# All services are built from sibling repos checked out next to overload-party-e2e.
-# Building Go services (account / card / shop / scenario / gateway) requires a single
-# GitHub App installation token as a docker secret. matchmaking has no private
-# cross-repo dependencies and battle resolves dependencies via Cloudsmith, so neither
-# needs the token.
+# 各サービスは overload-party-e2e と同じ階層に checkout された兄弟リポジトリから
+# ビルドする。Go サービス (account / card / shop / scenario / gateway / matchmaking)
+# のビルドには GitHub App の installation token を docker secret として1つ渡す
+# 必要がある。battle は依存解決を Cloudsmith 経由で行うため、この secret は不要。
 #
 #   secrets/GO_MODULES_TOKEN  (overload-party-cross-repo-deps App の installation token)
 #
-# Token は Cross-Repo Deps App から都度生成する (1 時間 expire)。
+# Token は Cross-Repo Deps App から都度生成する (1時間で失効)。
 # helper script で発行:
 #   GITHUB_APP_ID=... GITHUB_APP_PRIVATE_KEY=path/to/key.pem \
 #     ./docker/scripts/generate-go-modules-token.sh
 #
 #   pnpm compose:up
 #
-# Each service is published on the host port its *_SERVICE_URL points at, so tests can
-# reach gateway and Pub/Sub-driven flows work without additional networking.
+# 各サービスはそれぞれの *_SERVICE_URL が指すホストポートで公開されるため、
+# テストは追加のネットワーク設定無しで gateway や Pub/Sub 駆動のフローに到達できる。
 
 name: overload-party-e2e
 
@@ -49,13 +48,29 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_MULTIPLE_DATABASES: account,card,shop,scenario,gateway
+      # 本番は各サービスのスキーマを1つのデータベースへ集約する (ops db-migrate が
+      # スキーマの union を適用する) ため、サービス間でデータベースを共有しスキーマを
+      # 跨いだ読み取りが成立する (例: scenario が account.players/player_factions を読む)。
+      # 各サービスは接続ごとの search_path (下記 DATABASE_CONN 参照) で自スキーマに
+      # 絞り込む。ここでも同じ単一データベース構成を再現する。
+      POSTGRES_DB: overload_party
     volumes:
-      - ./postgres/init-multiple-dbs.sh:/docker-entrypoint-initdb.d/00_init.sh:ro
-      - ../../overload-party-account/db/schema.sql:/docker-entrypoint-initdb.d/01_account.sql:ro
-      - ../../overload-party-card/db/schema.sql:/docker-entrypoint-initdb.d/02_card.sql:ro
-      - ../../overload-party-shop/db/schema.sql:/docker-entrypoint-initdb.d/03_shop.sql:ro
-      - ../../overload-party-scenario/db/schema.sql:/docker-entrypoint-initdb.d/04_scenario.sql:ro
+      # 各スキーマ (CREATE SCHEMA <svc> とそのテーブル群) と投入用シードは、この単一
+      # データベースに対してファイル名順で適用される。全スキーマ作成 → card のシード
+      # (product_id の FK 制約があるため products を initiatives より先に) → shop の
+      # products の順。card は起動時にカード/プロダクト/施策キャッシュを即座に読み込み、
+      # いずれかが空なら終了する。
+      - ../../overload-party-account/db/schema.sql:/docker-entrypoint-initdb.d/01_account_schema.sql:ro
+      - ../../overload-party-card/db/schema.sql:/docker-entrypoint-initdb.d/02_card_schema.sql:ro
+      - ../../overload-party-shop/db/schema.sql:/docker-entrypoint-initdb.d/03_shop_schema.sql:ro
+      - ../../overload-party-scenario/db/schema.sql:/docker-entrypoint-initdb.d/04_scenario_schema.sql:ro
+      - ../../overload-party-gateway/db/schema.sql:/docker-entrypoint-initdb.d/05_gateway_schema.sql:ro
+      - ../../overload-party-battle/db/schema.sql:/docker-entrypoint-initdb.d/06_battle_schema.sql:ro
+      - ../../overload-party-card/db/seed/products_seed.sql:/docker-entrypoint-initdb.d/07_card_products_seed.sql:ro
+      - ../../overload-party-card/db/seed/initiatives_seed.sql:/docker-entrypoint-initdb.d/08_card_initiatives_seed.sql:ro
+      - ../../overload-party-card/db/seed/cards_seed.sql:/docker-entrypoint-initdb.d/09_card_cards_seed.sql:ro
+      - ../../overload-party-card/db/seed/card_packs_seed.sql:/docker-entrypoint-initdb.d/10_card_packs_seed.sql:ro
+      - ../../overload-party-shop/db/seed/products_seed.sql:/docker-entrypoint-initdb.d/11_shop_products_seed.sql:ro
     ports:
       - "5432:5432"
     healthcheck:
@@ -115,6 +130,25 @@ services:
     entrypoint: ["/bin/bash", "/init-topics.sh"]
     restart: "no"
 
+  # ops のシードツールを使い、common の SSoT yaml から Firestore エミュレータの
+  # game_config コレクションを投入する。account は起動時に必須の game_config キーを
+  # 検証するため、この完了を待つ。実環境では同じツールを実際の Cloud Firestore に対して実行する。
+  firestore-init:
+    image: python:3.12-slim
+    depends_on:
+      firestore-emulator:
+        condition: service_healthy
+    environment:
+      FIRESTORE_EMULATOR_HOST: firestore-emulator:8080
+    volumes:
+      - ../../overload-party-ops/firestore-seed/seed_game_config.py:/seed/seed_game_config.py:ro
+      - ../../overload-party-common/data/game_config_defaults.yaml:/seed/game_config_defaults.yaml:ro
+    entrypoint:
+      - /bin/sh
+      - -c
+      - pip install --quiet google-cloud-firestore pyyaml && python3 /seed/seed_game_config.py --project overload-party-local --source /seed/game_config_defaults.yaml
+    restart: "no"
+
   account:
     build:
       context: ../../overload-party-account
@@ -124,12 +158,14 @@ services:
         condition: service_healthy
       firestore-emulator:
         condition: service_healthy
+      firestore-init:
+        condition: service_completed_successfully
       pubsub-init:
         condition: service_completed_successfully
     environment:
       PORT: "9005"
       LOG_MODE: local
-      DATABASE_CONN: postgres://postgres:postgres@postgres:5432/account?sslmode=disable
+      DATABASE_CONN: host=postgres port=5432 user=postgres password=postgres dbname=overload_party sslmode=disable search_path=account,public
       DATABASE_IAM_AUTH_ENABLED: "false"
       GOOGLE_CLOUD_PROJECT_ID: overload-party-local
       FIRESTORE_EMULATOR_HOST: firestore-emulator:8080
@@ -149,9 +185,9 @@ services:
       pubsub-init:
         condition: service_completed_successfully
     environment:
-      ENV: local
+      ENV: dev
       PORT: "9003"
-      DATABASE_CONN: postgres://postgres:postgres@postgres:5432/card?sslmode=disable
+      DATABASE_CONN: host=postgres port=5432 user=postgres password=postgres dbname=overload_party sslmode=disable search_path=card,public
       DATABASE_IAM_AUTH_ENABLED: "false"
       PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
       PUBSUB_PROJECT_ID: overload-party-local
@@ -172,10 +208,10 @@ services:
       pubsub-init:
         condition: service_completed_successfully
     environment:
-      ENV: local
+      IAP_MODE: local
       PORT: "9006"
       LOG_MODE: local
-      DATABASE_CONN: postgres://postgres:postgres@postgres:5432/shop?sslmode=disable
+      DATABASE_CONN: host=postgres port=5432 user=postgres password=postgres dbname=overload_party sslmode=disable search_path=shop,public
       DATABASE_IAM_AUTH_ENABLED: "false"
       GOOGLE_CLOUD_PROJECT: overload-party-local
       FIRESTORE_EMULATOR_HOST: firestore-emulator:8080
@@ -210,11 +246,12 @@ services:
     environment:
       ENV: local
       PORT: "9007"
-      DATABASE_CONN: postgres://postgres:postgres@postgres:5432/scenario?sslmode=disable
+      # scenario はエピソード解放判定のため account.players / account.player_factions
+      # を読むので、共有データベース内で search_path に account スキーマも含める。
+      DATABASE_CONN: host=postgres port=5432 user=postgres password=postgres dbname=overload_party sslmode=disable search_path=scenario,account,public
       DATABASE_IAM_AUTH_ENABLED: "false"
       GOOGLE_CLOUD_PROJECT_ID: overload-party-local
       FIRESTORE_EMULATOR_HOST: firestore-emulator:8080
-      FIRESTORE_PROJECT_ID: overload-party-local
       PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
       PUBSUB_PROJECT_ID: overload-party-local
       # ローカルスタックは Cloud Storage に到達できないため、スクリプトの読み出し元を
@@ -235,6 +272,7 @@ services:
   matchmaking:
     build:
       context: ../../overload-party-matchmaking
+      secrets: *go-build-secrets
     depends_on:
       redis:
         condition: service_healthy
@@ -258,9 +296,18 @@ services:
   battle:
     build:
       context: ../../overload-party-battle
+    depends_on:
+      postgres:
+        condition: service_healthy
+      card:
+        condition: service_started
     environment:
       ASPNETCORE_ENVIRONMENT: Local
       ASPNETCORE_URLS: http://+:9002
+      # battle は Npgsql を使う (.NET の接続文字列形式であり libpq ではない) ため、
+      # 共有データベース内の battle スキーマを所有し、無修飾のクエリは
+      # Search Path=battle で解決される。
+      DATABASE_CONN: Host=postgres;Port=5432;Database=overload_party;Username=postgres;Password=postgres;Search Path=battle
     ports:
       - "9002:9002"
 
@@ -296,8 +343,9 @@ services:
     environment:
       ENV: local
       PORT: "9001"
-      DATABASE_CONN: postgres://postgres:postgres@postgres:5432/gateway?sslmode=disable
+      DATABASE_CONN: host=postgres port=5432 user=postgres password=postgres dbname=overload_party sslmode=disable search_path=gateway,public
       DATABASE_IAM_AUTH_ENABLED: "false"
+      GOOGLE_CLOUD_PROJECT_ID: overload-party-local
       ACCOUNT_SERVICE_URL: http://account:9005
       CARD_SERVICE_URL: http://card:9003
       MATCHMAKING_SERVICE_URL: http://matchmaking:9004
@@ -360,22 +408,25 @@ services:
       timeout: 3s
       retries: 30
 
-  # React client (Vite SPA) served via `vite preview` so UI E2E can drive the real
-  # screens. Built with VITE_* pointing at the host-published gateway; the SPA runs in
-  # the host browser, so localhost:9001 resolves correctly. Port 5173 matches
-  # gateway's ALLOWED_ORIGINS above.
+  # React client (Vite SPA)。UI E2E が実際の画面を操作できるよう `vite preview` で
+  # 配信する。VITE_* はホスト側に公開された gateway を指してビルドする。SPA は
+  # ホストのブラウザ上で動くため localhost:9001 は正しく解決される。ポート 5173 は
+  # 上記 gateway の ALLOWED_ORIGINS と対応する。
   #
-  # If @kenyamaneko/* needs auth at build time, add to build below:
+  # ビルド時に @kenyamaneko/* の認証が必要になった場合は、以下の build に
   #     secrets:
   #       - CLOUDSMITH_TOKEN
-  # and declare CLOUDSMITH_TOKEN in the top-level `secrets:` block
-  # (file: ../secrets/CLOUDSMITH_TOKEN).
+  # を追加し、トップレベルの `secrets:` ブロックにも CLOUDSMITH_TOKEN を
+  # 宣言する (file: ../secrets/CLOUDSMITH_TOKEN)。
   client:
     build:
       context: ../../overload-party-client
       args:
         VITE_API_BASE_URL: http://localhost:9001
         VITE_WS_HOST: localhost:9001
+        # client は vite preview (DEV=false) で動くため VITE_ASSET_BASE_URL が必須で、
+        # 自己配信の空マニフェスト (public/manifest.json) を指せば解決する。
+        VITE_ASSET_BASE_URL: http://localhost:5173
     depends_on:
       gateway-ready:
         condition: service_healthy

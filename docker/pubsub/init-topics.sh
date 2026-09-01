@@ -1,6 +1,6 @@
 #!/bin/bash
-# Creates the Pub/Sub topics + subscriptions the e2e stack needs in the emulator.
-# The shapes mirror what overload-party-infra creates in real Google Cloud environments.
+# e2e スタックが必要とする Pub/Sub のトピックと購読をエミュレータ上に作成する。
+# 形は overload-party-infra が実際の Google Cloud 環境に作るものと同じにする。
 set -euo pipefail
 
 PROJECT="${PUBSUB_PROJECT_ID:-overload-party-local}"
@@ -38,7 +38,7 @@ create_sub() {
   exit 1
 }
 
-# Topics published by each service.
+# 各サービスが発行するトピック。
 create_topic "matchmaking-events"
 create_topic "faction-acquired"
 create_topic "card-pack-purchased"
@@ -47,7 +47,7 @@ create_topic "player-onboarded"
 create_topic "onboarding-name-set"
 create_topic "onboarding-faction-set"
 
-# Subscriptions per consumer (gateway, account, card).
+# 消費側 (gateway / account / card) ごとの購読。
 # 消費側はいずれも pull 購読のプロセスを持たず HTTP の受け口で受信するため、購読は push で作成する。
 create_sub "matchmaking-events"     "matchmaking-events-gateway"     "http://gateway:9001/internal/v1/pubsub/match-made"
 create_sub "faction-acquired"       "faction-acquired-account"       "http://account:9005/internal/v1/pubsub/faction-acquired"

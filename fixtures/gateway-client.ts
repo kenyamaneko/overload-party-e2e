@@ -4,6 +4,7 @@ import type {
   DeckCreateRequest,
   DeckDetailResponse,
   PlayerCardWithDef,
+  Product,
 } from '@kenyamaneko/overload-party-api-card';
 import type {
   ProductResponse,
@@ -19,7 +20,7 @@ import type { TestIdentity } from './auth.js';
 export interface OnboardingNameRequest {
   name: string;
 }
-export interface OnboardingCompleteRequest {
+export interface OnboardingFactionRequest {
   initial_faction_id: string;
 }
 export interface OnboardingCompleteResponse {
@@ -40,36 +41,55 @@ export class GatewayClient {
     return this.request<PlayerResponse>('POST', '/api/v1/auth/login');
   }
   getPlayer(): Promise<PlayerResponse> {
-    return this.request<PlayerResponse>('GET', '/api/v1/player');
+    return this.request<PlayerResponse>('GET', '/api/v1/account/me');
   }
 
   setOnboardingName(name: string): Promise<void> {
-    return this.requestVoid('PUT', '/api/v1/onboarding/name', {
+    return this.requestVoid('PUT', '/api/v1/scenarios/onboarding/name', {
       name,
     } satisfies OnboardingNameRequest);
   }
-  completeOnboarding(initialFactionId: string): Promise<OnboardingCompleteResponse> {
+  /**
+   * Selects the initial faction during onboarding.
+   * @param initialFactionId the faction id chosen for the player
+   * @returns resolves once the selection is accepted
+   */
+  selectOnboardingFaction(initialFactionId: string): Promise<void> {
+    return this.requestVoid('POST', '/api/v1/scenarios/onboarding/faction', {
+      initial_faction_id: initialFactionId,
+    } satisfies OnboardingFactionRequest);
+  }
+  /**
+   * Completes onboarding after the name and faction have been set.
+   */
+  completeOnboarding(): Promise<OnboardingCompleteResponse> {
     return this.request<OnboardingCompleteResponse>(
       'POST',
-      '/api/v1/onboarding/complete',
-      { initial_faction_id: initialFactionId } satisfies OnboardingCompleteRequest,
+      '/api/v1/scenarios/onboarding/complete',
     );
   }
 
   listCards(): Promise<PlayerCardWithDef[]> {
-    return this.request<PlayerCardWithDef[]>('GET', '/api/v1/cards');
+    return this.request<PlayerCardWithDef[]>('GET', '/api/v1/cards/cards/with-ownership');
   }
   listOwnedCards(): Promise<PlayerCardWithDef[]> {
-    return this.request<PlayerCardWithDef[]>('GET', '/api/v1/player/cards');
+    return this.request<PlayerCardWithDef[]>('GET', '/api/v1/cards/cards');
+  }
+  /**
+   * Lists card-side products with their routine/special initiatives for deck construction.
+   * @returns the products a player can build a deck from
+   */
+  listCardProducts(): Promise<Product[]> {
+    return this.request<Product[]>('GET', '/api/v1/cards/products');
   }
   listDecks(): Promise<Deck[]> {
-    return this.request<Deck[]>('GET', '/api/v1/player/decks');
+    return this.request<Deck[]>('GET', '/api/v1/cards/decks');
   }
   createDeck(req: DeckCreateRequest): Promise<Deck> {
-    return this.request<Deck>('POST', '/api/v1/player/decks', req);
+    return this.request<Deck>('POST', '/api/v1/cards/decks', req);
   }
   getDeck(deckId: number): Promise<DeckDetailResponse> {
-    return this.request<DeckDetailResponse>('GET', `/api/v1/player/decks/${deckId}`);
+    return this.request<DeckDetailResponse>('GET', `/api/v1/cards/decks/${deckId}`);
   }
 
   listProducts(): Promise<{ products: ProductResponse[] }> {
@@ -80,12 +100,12 @@ export class GatewayClient {
   }
 
   listScenarios(): Promise<{ episodes: EpisodeWithStatus[] }> {
-    return this.request<{ episodes: EpisodeWithStatus[] }>('GET', '/api/v1/scenarios');
+    return this.request<{ episodes: EpisodeWithStatus[] }>('GET', '/api/v1/scenarios/episodes');
   }
   completeScenario(episodeId: string): Promise<ScenarioCompleteResponse> {
     return this.request<ScenarioCompleteResponse>(
       'POST',
-      `/api/v1/scenarios/${encodeURIComponent(episodeId)}/complete`,
+      `/api/v1/scenarios/episodes/${encodeURIComponent(episodeId)}/complete`,
     );
   }
 
