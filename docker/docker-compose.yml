@@ -203,8 +203,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      firestore-emulator:
-        condition: service_healthy
       pubsub-init:
         condition: service_completed_successfully
     environment:
@@ -214,7 +212,6 @@ services:
       DATABASE_CONN: host=postgres port=5432 user=postgres password=postgres dbname=overload_party sslmode=disable search_path=shop,public
       DATABASE_IAM_AUTH_ENABLED: "false"
       GOOGLE_CLOUD_PROJECT: overload-party-local
-      FIRESTORE_EMULATOR_HOST: firestore-emulator:8080
       PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
       PUBSUB_PROJECT_ID: overload-party-local
       CARD_PACK_PURCHASED_TOPIC: card-pack-purchased
